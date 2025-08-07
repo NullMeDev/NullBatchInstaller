@@ -1,0 +1,14 @@
+
+=== NullInstaller Started: 8/7/2025 8:35:57 AM ===
+[2025-08-07 08:37:44] Installing BraveBrowserSetup-BRV010.exe...
+[2025-08-07 08:37:44] Starting installation: C:\Users\Administrator\Desktop\Down\BraveBrowserSetup-BRV010.exe
+[2025-08-07 08:38:08] Installing Docker Desktop Installer.exe...
+[2025-08-07 08:38:08] Starting installation: C:\Users\Administrator\Desktop\Down\Docker Desktop Installer.exe
+[2025-08-07 08:39:20] Installation failed with exit code: -5
+[2025-08-07 08:39:20] Installing dotnet-sdk-9.0.304-win-x64 (1).exe...
+[2025-08-07 08:39:20] Starting installation: C:\Users\Administrator\Desktop\Down\dotnet-sdk-9.0.304-win-x64 (1).exe
+[2025-08-07 08:42:30] Installation stopped by user
+
+=== NullInstaller Started: 8/7/2025 9:09:51 AM ===
+
+=== NullInstaller Started: 8/7/2025 11:08:17 AM ===
