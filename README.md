@@ -1,6 +1,12 @@
 # NullInstaller v4.2.6
 
-A professional Windows software installer with silent installation support.
+**Ready-to-run Windows software installer - No compilation required!**
+
+A professional batch installer with silent installation support.
+
+## Quick Start
+
+Simply download and run `NullInstaller.exe` - no build tools or compilation needed!
 
 ## Features
 - One-click batch installation
