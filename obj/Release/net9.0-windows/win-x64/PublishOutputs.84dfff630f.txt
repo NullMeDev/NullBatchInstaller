@@ -1,2 +1,0 @@
-C:\Users\Administrator\Desktop\NullInstaller\dist\NullInstaller.pdb
-C:\Users\Administrator\Desktop\NullInstaller\dist\NullInstaller.exe

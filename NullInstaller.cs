@@ -62,13 +62,13 @@ namespace NullInstaller
         {
             httpClient = new HttpClient();
             httpClient.Timeout = TimeSpan.FromMinutes(30);
-            httpClient.DefaultRequestHeaders.Add("User-Agent", "NullInstaller/2.0");
+            httpClient.DefaultRequestHeaders.Add("User-Agent", "NullInstaller/4.2.6");
         }
 
         private void InitializeComponent()
         {
             // Form properties
-            this.Text = "NullInstaller v0.2.0 - Enhanced Windows Installer Tool";
+            this.Text = "NullInstaller v4.2.6 - Enhanced Windows Installer Tool";
             this.Size = new Size(1200, 750);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.BackColor = Color.FromArgb(45, 45, 48); // Dark theme

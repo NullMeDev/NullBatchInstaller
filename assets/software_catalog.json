@@ -680,6 +680,83 @@
       "vendor": "pCloud"
     }
   ],
+  "stealth_mode": {
+    "description": "Privacy and security tools for one-click installation",
+    "tools": [
+      {
+        "name": "Tor Browser",
+        "description": "Anonymous web browsing through the Tor network",
+        "download_url": "https://www.torproject.org/dist/torbrowser/13.0.8/torbrowser-install-win64-13.0.8_ALL.exe",
+        "silent_switches": "/S",
+        "size_mb": 116,
+        "vendor": "The Tor Project"
+      },
+      {
+        "name": "Brave Browser",
+        "description": "Privacy-focused browser with built-in ad blocking",
+        "download_url": "https://laptop-updates.brave.com/latest/winx64",
+        "silent_switches": "/silent /install",
+        "size_mb": 165,
+        "vendor": "Brave Software"
+      },
+      {
+        "name": "Mullvad VPN",
+        "description": "Privacy-first VPN with no logs policy",
+        "download_url": "https://mullvad.net/media/app/MullvadVPN-latest.exe",
+        "silent_switches": "/S",
+        "size_mb": 87,
+        "vendor": "Mullvad VPN AB"
+      },
+      {
+        "name": "VeraCrypt",
+        "description": "Military-grade disk encryption software",
+        "download_url": "https://launchpad.net/veracrypt/trunk/1.26.7/+download/VeraCrypt_Setup_x64_1.26.7.msi",
+        "silent_switches": "/quiet /norestart ACCEPTLICENSE=YES",
+        "size_mb": 45,
+        "vendor": "IDRIX"
+      },
+      {
+        "name": "Signal Desktop",
+        "description": "End-to-end encrypted messaging",
+        "download_url": "https://updates.signal.org/desktop/signal-desktop-win-6.43.1.exe",
+        "silent_switches": "/S",
+        "size_mb": 134,
+        "vendor": "Signal Foundation"
+      },
+      {
+        "name": "KeePassXC",
+        "description": "Open-source password manager",
+        "download_url": "https://github.com/keepassxreboot/keepassxc/releases/latest/download/KeePassXC-2.7.6-Win64.msi",
+        "silent_switches": "/quiet /norestart",
+        "size_mb": 76,
+        "vendor": "KeePassXC Team"
+      },
+      {
+        "name": "BleachBit",
+        "description": "System cleaning and privacy protection",
+        "download_url": "https://download.bleachbit.org/BleachBit-4.6.0-setup.exe",
+        "silent_switches": "/S",
+        "size_mb": 21,
+        "vendor": "BleachBit"
+      }
+    ],
+    "total_size_mb": 744,
+    "installation_order": [
+      "KeePassXC",
+      "VeraCrypt",
+      "Mullvad VPN",
+      "Tor Browser",
+      "Brave Browser",
+      "Signal Desktop",
+      "BleachBit"
+    ],
+    "notes": {
+      "download_source": "All tools are downloaded from official vendor sources",
+      "installation": "Tools are installed silently in recommended order",
+      "privacy": "No telemetry or tracking - all tools respect user privacy",
+      "configuration": "Default configurations are privacy-focused"
+    }
+  },
   "metadata": {
     "version": "1.0.0",
     "last_updated": "2024-01-15",
