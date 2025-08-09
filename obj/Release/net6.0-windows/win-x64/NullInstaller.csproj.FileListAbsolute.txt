@@ -1,0 +1,5 @@
+C:\Users\Administrator\Desktop\NullInstaller\obj\Release\net6.0-windows\win-x64\NullInstaller.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Administrator\Desktop\NullInstaller\obj\Release\net6.0-windows\win-x64\NullInstaller.AssemblyInfoInputs.cache
+C:\Users\Administrator\Desktop\NullInstaller\obj\Release\net6.0-windows\win-x64\NullInstaller.AssemblyInfo.cs
+C:\Users\Administrator\Desktop\NullInstaller\obj\Release\net6.0-windows\win-x64\NullInstaller.csproj.CoreCompileInputs.cache
+C:\Users\Administrator\Desktop\NullInstaller\obj\Release\net6.0-windows\win-x64\NullInstaller.sourcelink.json
