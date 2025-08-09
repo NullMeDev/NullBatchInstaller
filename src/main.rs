@@ -13,6 +13,13 @@ use windows::{
     Win32::UI::Controls::*,
 };
 
+// Custom RGB macro
+macro_rules! RGB {
+    ($r:expr, $g:expr, $b:expr) => {
+        COLORREF((($b as u32) << 16) | (($g as u32) << 8) | ($r as u32))
+    };
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct ProgramEntry {
     name: String,
@@ -63,13 +70,16 @@ fn main() -> Result<()> {
         let instance = GetModuleHandleW(None)?;
         let window_class = w!("NullInstallerClass");
 
+        // Create custom dark brush
+        let dark_brush = CreateSolidBrush(RGB!(0x1a, 0x1a, 0x1f)); // Slate black
+
         let wc = WNDCLASSW {
             hCursor: LoadCursorW(None, IDC_ARROW)?,
             hInstance: instance.into(),
             lpszClassName: window_class,
             style: CS_HREDRAW | CS_VREDRAW,
             lpfnWndProc: Some(wndproc),
-            hbrBackground: HBRUSH(COLOR_WINDOW.0 as _),
+            hbrBackground: dark_brush,
             ..Default::default()
         };
 
@@ -78,12 +88,12 @@ fn main() -> Result<()> {
         let _hwnd = CreateWindowExW(
             WINDOW_EX_STYLE::default(),
             window_class,
-            w!("NullInstaller v4.2.6 - Professional Software Installer"),
+            w!("NullInstaller v4.2.6"),
             WS_OVERLAPPEDWINDOW | WS_VISIBLE,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
-            1000,
-            700,
+            650,  // Compact width like WinRAR
+            480,  // Compact height
             None,
             None,
             instance,
@@ -125,6 +135,19 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
                     if nmhdr.code == TVN_SELCHANGED {
                         let pnmtv = lparam.0 as *const NMTREEVIEWW;
                         handle_tree_selection((*pnmtv).itemNew.hItem);
+                    } else if nmhdr.code == NM_CLICK {
+                        // Handle single click to expand/collapse
+                        let mut hti = TVHITTESTINFO {
+                            pt: POINT { x: 0, y: 0 },
+                            flags: 0,
+                            hItem: HTREEITEM(0),
+                        };
+                        GetCursorPos(&mut hti.pt);
+                        ScreenToClient(TREE_VIEW, &mut hti.pt);
+                        let item = SendMessageW(TREE_VIEW, TVM_HITTEST, WPARAM(0), LPARAM(&hti as *const _ as _));
+                        if item.0 != 0 {
+                            SendMessageW(TREE_VIEW, TVM_EXPAND, WPARAM(TVE_TOGGLE as _), LPARAM(item.0));
+                        }
                     }
                 } else if nmhdr.idFrom == ID_LIST as usize {
                     if nmhdr.code == NM_CLICK {
@@ -151,13 +174,13 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
 unsafe fn create_ui(window: HWND) {
     let instance = GetModuleHandleW(None).unwrap();
 
-    // Create toolbar buttons (WinRAR style)
+    // Create compact toolbar buttons (WinRAR style)
     CreateWindowExW(
         WINDOW_EX_STYLE::default(),
         w!("BUTTON"),
-        w!("▶ Install"),
-        WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON,
-        10, 10, 100, 35,
+        w!("Install"),
+        WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON | BS_FLAT,
+        5, 5, 70, 28,
         window,
         HMENU(ID_INSTALL as _),
         instance,
@@ -167,9 +190,9 @@ unsafe fn create_ui(window: HWND) {
     CreateWindowExW(
         WINDOW_EX_STYLE::default(),
         w!("BUTTON"),
-        w!("⬇ Download"),
-        WS_VISIBLE | WS_CHILD | WS_TABSTOP,
-        120, 10, 100, 35,
+        w!("Download"),
+        WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_FLAT,
+        80, 5, 70, 28,
         window,
         HMENU(ID_DOWNLOAD as _),
         instance,
@@ -179,9 +202,9 @@ unsafe fn create_ui(window: HWND) {
     CreateWindowExW(
         WINDOW_EX_STYLE::default(),
         w!("BUTTON"),
-        w!("■ Stop"),
-        WS_VISIBLE | WS_CHILD | WS_TABSTOP | WS_DISABLED,
-        230, 10, 80, 35,
+        w!("Stop"),
+        WS_VISIBLE | WS_CHILD | WS_TABSTOP | WS_DISABLED | BS_FLAT,
+        155, 5, 50, 28,
         window,
         HMENU(ID_STOP as _),
         instance,
@@ -191,9 +214,9 @@ unsafe fn create_ui(window: HWND) {
     CreateWindowExW(
         WINDOW_EX_STYLE::default(),
         w!("BUTTON"),
-        w!("☑ Select All"),
-        WS_VISIBLE | WS_CHILD | WS_TABSTOP,
-        320, 10, 100, 35,
+        w!("Select All"),
+        WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_FLAT,
+        210, 5, 70, 28,
         window,
         HMENU(ID_SELECT_ALL as _),
         instance,
@@ -203,9 +226,9 @@ unsafe fn create_ui(window: HWND) {
     CreateWindowExW(
         WINDOW_EX_STYLE::default(),
         w!("BUTTON"),
-        w!("☐ Deselect"),
-        WS_VISIBLE | WS_CHILD | WS_TABSTOP,
-        430, 10, 100, 35,
+        w!("Deselect"),
+        WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_FLAT,
+        285, 5, 70, 28,
         window,
         HMENU(ID_DESELECT as _),
         instance,
@@ -215,59 +238,67 @@ unsafe fn create_ui(window: HWND) {
     CreateWindowExW(
         WINDOW_EX_STYLE::default(),
         w!("BUTTON"),
-        w!("🛡 Stealth"),
-        WS_VISIBLE | WS_CHILD | WS_TABSTOP,
-        540, 10, 100, 35,
+        w!("Stealth"),
+        WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_FLAT,
+        360, 5, 60, 28,
         window,
         HMENU(ID_STEALTH as _),
         instance,
         None,
     );
 
-    // Create TreeView (left panel - categories)
+    // Create TreeView (left panel - categories) with dark theme
     TREE_VIEW = CreateWindowExW(
         WS_EX_CLIENTEDGE,
         WC_TREEVIEW,
         w!(""),
         WS_VISIBLE | WS_CHILD | WS_BORDER | TVS_HASLINES | TVS_LINESATROOT | TVS_HASBUTTONS | TVS_SHOWSELALWAYS,
-        10, 60, 200, 400,
+        5, 38, 180, 280,
         window,
         HMENU(ID_TREE as _),
         instance,
         None,
     );
+    
+    // Set dark background for TreeView
+    SendMessageW(TREE_VIEW, TVM_SETBKCOLOR, WPARAM(0), LPARAM(RGB!(0x1a, 0x1a, 0x1f).0 as _));
+    SendMessageW(TREE_VIEW, TVM_SETTEXTCOLOR, WPARAM(0), LPARAM(RGB!(0xe0, 0xe0, 0xe0).0 as _));
 
-    // Create ListView (main panel - programs)
+    // Create ListView (main panel - programs) with dark theme
     LIST_VIEW = CreateWindowExW(
         WS_EX_CLIENTEDGE,
         WC_LISTVIEW,
         w!(""),
         WS_VISIBLE | WS_CHILD | LVS_REPORT | LVS_SINGLESEL | WS_BORDER,
-        220, 60, 760, 400,
+        190, 38, 450, 280,
         window,
         HMENU(ID_LIST as _),
         instance,
         None,
     );
+    
+    // Set dark background for ListView
+    SendMessageW(LIST_VIEW, LVM_SETBKCOLOR, WPARAM(0), LPARAM(RGB!(0x1a, 0x1a, 0x1f).0 as _));
+    SendMessageW(LIST_VIEW, LVM_SETTEXTBKCOLOR, WPARAM(0), LPARAM(RGB!(0x1a, 0x1a, 0x1f).0 as _));
+    SendMessageW(LIST_VIEW, LVM_SETTEXTCOLOR, WPARAM(0), LPARAM(RGB!(0xe0, 0xe0, 0xe0).0 as _));
 
     // Set ListView extended styles
     SendMessageW(LIST_VIEW, LVM_SETEXTENDEDLISTVIEWSTYLE, WPARAM(0), 
         LPARAM((LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_CHECKBOXES) as _));
 
-    // Add ListView columns
-    add_list_column(0, "Name", 300);
-    add_list_column(1, "Version", 80);
-    add_list_column(2, "Size", 80);
-    add_list_column(3, "Status", 120);
-    add_list_column(4, "Vendor", 150);
+    // Add ListView columns (compact)
+    add_list_column(0, "Name", 200);
+    add_list_column(1, "Version", 60);
+    add_list_column(2, "Size", 60);
+    add_list_column(3, "Status", 80);
 
-    // Create log text box (bottom panel)
+    // Create log text box (bottom panel) with dark theme
     LOG_BOX = CreateWindowExW(
         WS_EX_CLIENTEDGE,
         w!("EDIT"),
         w!(""),
         WS_VISIBLE | WS_CHILD | WS_VSCROLL | WS_BORDER | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
-        10, 470, 970, 150,
+        5, 323, 635, 100,
         window,
         HMENU(ID_LOG as _),
         instance,
@@ -302,8 +333,8 @@ unsafe fn add_list_column(index: i32, text: &str, width: i32) {
 unsafe fn populate_tree_view() {
     if TREE_VIEW.0 == 0 { return; }
 
-    // Add "All Software" root
-    let all_item = add_tree_item(None, "📦 All Software");
+    // Better organized categories - put All Software at bottom
+    let mut category_items = Vec::new();
     
     if let Some(catalog) = &CATALOG {
         let mut categories: HashMap<String, Vec<&ProgramEntry>> = HashMap::new();
@@ -313,22 +344,66 @@ unsafe fn populate_tree_view() {
             categories.entry(category.to_string()).or_insert_with(Vec::new).push(program);
         }
 
-        let mut sorted_categories: Vec<_> = categories.keys().cloned().collect();
-        sorted_categories.sort();
+        // Define category order for better organization
+        let priority_order = vec![
+            "Browsers",
+            "Development IDEs", 
+            "Development Tools",
+            "Communication",
+            "Media",
+            "Productivity",
+            "Security",
+            "Privacy & Security",
+            "System Tools",
+            "System Utilities",
+            "Utilities",
+            "Network",
+            "Gaming",
+            "Graphics",
+            "Cloud Storage",
+            "Runtime",
+            "Remote Access",
+            "Virtualization"
+        ];
 
-        for category in sorted_categories {
+        // Add categories in priority order
+        for priority_cat in &priority_order {
+            if let Some(programs) = categories.get(*priority_cat) {
+                let icon = get_category_icon(priority_cat);
+                let text = format!("{} {} ({})", icon, priority_cat, programs.len());
+                let item = add_tree_item(None, &text);
+                category_items.push(item);
+            }
+        }
+
+        // Add any remaining categories not in priority list
+        let mut other_cats: Vec<_> = categories.keys()
+            .filter(|k| !priority_order.contains(&k.as_str()))
+            .cloned()
+            .collect();
+        other_cats.sort();
+        
+        for category in other_cats {
             let icon = get_category_icon(&category);
             let count = categories[&category].len();
             let text = format!("{} {} ({})", icon, category, count);
-            add_tree_item(None, &text);
+            let item = add_tree_item(None, &text);
+            category_items.push(item);
         }
     }
 
-    // Add Stealth Mode
+    // Add special items at the bottom
+    add_tree_item(None, "─────────────");
     add_tree_item(None, "🛡 Stealth Mode");
+    let all_item = add_tree_item(None, "📦 All Software");
 
-    // Select "All Software" by default
+    // Select "All Software" by default and expand all
     SendMessageW(TREE_VIEW, TVM_SELECTITEM, WPARAM(TVGN_CARET as _), LPARAM(all_item.0));
+    
+    // Expand all category items
+    for item in category_items {
+        SendMessageW(TREE_VIEW, TVM_EXPAND, WPARAM(TVE_EXPAND as _), LPARAM(item.0));
+    }
 }
 
 unsafe fn add_tree_item(parent: Option<HTREEITEM>, text: &str) -> HTREEITEM {
@@ -663,6 +738,26 @@ const EM_SETSEL: u32 = 0x00B1;
 const EM_REPLACESEL: u32 = 0x00C2;
 
 const BS_PUSHBUTTON: WINDOW_STYLE = WINDOW_STYLE(0x00000000);
+const BS_FLAT: WINDOW_STYLE = WINDOW_STYLE(0x00008000);
 const SBARS_SIZEGRIP: WINDOW_STYLE = WINDOW_STYLE(0x0100);
 const SB_SETTEXTW: u32 = WM_USER + 11;
 const WM_ENABLE: u32 = 0x000A;
+const TVM_SETBKCOLOR: u32 = TV_FIRST + 29;
+const TVM_SETTEXTCOLOR: u32 = TV_FIRST + 30;
+const LVM_SETBKCOLOR: u32 = LVM_FIRST + 1;
+const LVM_SETTEXTBKCOLOR: u32 = LVM_FIRST + 38;
+const LVM_SETTEXTCOLOR: u32 = LVM_FIRST + 36;
+const NM_CLICK: u32 = 0xFFFFFFFE - 2;
+const TVN_ITEMEXPANDING: u32 = 0xFFFFFFFE - 5;
+const TVM_EXPAND: u32 = TV_FIRST + 2;
+const TVE_EXPAND: u32 = 0x0002;
+const TVE_TOGGLE: u32 = 0x0003;
+const TVM_HITTEST: u32 = TV_FIRST + 17;
+
+// TreeView hit test structure
+#[repr(C)]
+struct TVHITTESTINFO {
+    pt: POINT,
+    flags: u32,
+    hItem: HTREEITEM,
+}

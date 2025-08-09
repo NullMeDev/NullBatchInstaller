@@ -34,7 +34,31 @@
       "silent_switches": "/silent /install",
       "needs_reboot": false,
       "architecture": "x64",
-      "vendor": "Brave Software"
+      "vendor": "Brave Software",
+      "version": "1.65",
+      "size": "1.2MB"
+    },
+    {
+      "name": "Opera GX",
+      "category": "Browsers",
+      "download_url": "https://download.opera.com/download/get/?partner=www&opsys=Windows&package=Opera_GX",
+      "silent_switches": "/silent /allusers=1 /launchopera=0",
+      "needs_reboot": false,
+      "architecture": "x64",
+      "vendor": "Opera Software",
+      "version": "108.0",
+      "size": "4.2MB"
+    },
+    {
+      "name": "Mullvad Browser",
+      "category": "Browsers",
+      "download_url": "https://mullvad.net/download/browser/exe",
+      "silent_switches": "/S",
+      "needs_reboot": false,
+      "architecture": "x64",
+      "vendor": "Mullvad VPN",
+      "version": "14.5.5",
+      "size": "91MB"
     },
     {
       "name": "7-Zip",
@@ -46,13 +70,15 @@
       "vendor": "Igor Pavlov"
     },
     {
-      "name": "WinRAR",
+      "name": "WinRAR 7.13",
       "category": "System Utilities",
-      "download_url": "https://www.win-rar.com/fileadmin/winrar-versions/winrar/winrar-x64-623.exe",
+      "download_url": "https://www.win-rar.com/fileadmin/winrar-versions/winrar/winrar-x64-713.exe",
       "silent_switches": "/S",
       "needs_reboot": false,
       "architecture": "x64",
-      "vendor": "RARLAB"
+      "vendor": "RARLAB",
+      "version": "7.13",
+      "size": "3.4MB"
     },
     {
       "name": "Notepad++",
@@ -92,13 +118,59 @@
       "vendor": "OpenJS Foundation"
     },
     {
-      "name": "Python",
+      "name": "Python 3.13",
       "category": "Development Tools",
-      "download_url": "https://www.python.org/ftp/python/3.12.1/python-3.12.1-amd64.exe",
+      "download_url": "https://www.python.org/ftp/python/3.13.6/python-3.13.6-amd64.exe",
       "silent_switches": "/quiet InstallAllUsers=1 PrependPath=1",
       "needs_reboot": false,
       "architecture": "x64",
-      "vendor": "Python Software Foundation"
+      "vendor": "Python Software Foundation",
+      "version": "3.13.6",
+      "size": "27MB"
+    },
+    {
+      "name": "JetBrains Toolbox",
+      "category": "Development Tools",
+      "download_url": "https://download.jetbrains.com/toolbox/jetbrains-toolbox-latest.exe",
+      "silent_switches": "/S",
+      "needs_reboot": false,
+      "architecture": "x64",
+      "vendor": "JetBrains",
+      "version": "2.8.0",
+      "size": "104MB"
+    },
+    {
+      "name": "PyCharm Professional",
+      "category": "Development IDEs",
+      "download_url": "https://download.jetbrains.com/python/pycharm-professional-latest.exe",
+      "silent_switches": "/S /CONFIG=.\\silent.config",
+      "needs_reboot": false,
+      "architecture": "x64",
+      "vendor": "JetBrains",
+      "version": "2025.2",
+      "size": "500MB"
+    },
+    {
+      "name": "DataGrip",
+      "category": "Development IDEs",
+      "download_url": "https://download.jetbrains.com/datagrip/datagrip-latest.exe",
+      "silent_switches": "/S /CONFIG=.\\silent.config",
+      "needs_reboot": false,
+      "architecture": "x64",
+      "vendor": "JetBrains",
+      "version": "2025.2.1",
+      "size": "450MB"
+    },
+    {
+      "name": "RustRover",
+      "category": "Development IDEs",
+      "download_url": "https://download.jetbrains.com/rustrover/RustRover-latest.exe",
+      "silent_switches": "/S /CONFIG=.\\silent.config",
+      "needs_reboot": false,
+      "architecture": "x64",
+      "vendor": "JetBrains",
+      "version": "2025.2",
+      "size": "1.0GB"
     },
     {
       "name": "VLC Media Player",
@@ -127,15 +199,26 @@
       "architecture": "x64",
       "vendor": "Adobe"
     },
-    {
-      "name": "LibreOffice",
-      "category": "Productivity",
-      "download_url": "https://download.documentfoundation.org/libreoffice/stable/7.6.4/win/x86_64/LibreOffice_7.6.4_Win_x86-64.msi",
-      "silent_switches": "/quiet /norestart",
-      "needs_reboot": false,
-      "architecture": "x64",
-      "vendor": "The Document Foundation"
-    },
+      {
+        "name": "LibreOffice",
+        "category": "Productivity",
+        "download_url": "https://download.documentfoundation.org/libreoffice/stable/7.6.4/win/x86_64/LibreOffice_7.6.4_Win_x86-64.msi",
+        "silent_switches": "/quiet /norestart",
+        "needs_reboot": false,
+        "architecture": "x64",
+        "vendor": "The Document Foundation"
+      },
+      {
+        "name": "Obsidian",
+        "category": "Productivity",
+        "download_url": "https://github.com/obsidianmd/obsidian-releases/releases/download/v1.8.10/Obsidian-1.8.10.exe",
+        "silent_switches": "/S",
+        "needs_reboot": false,
+        "architecture": "x64",
+        "vendor": "Obsidian",
+        "version": "1.8.10",
+        "size": "254MB"
+      },
     {
       "name": "Microsoft Teams",
       "category": "Communication",
@@ -162,6 +245,17 @@
       "needs_reboot": false,
       "architecture": "x64",
       "vendor": "Discord Inc."
+    },
+    {
+      "name": "Session Desktop",
+      "category": "Communication",
+      "download_url": "https://github.com/oxen-io/session-desktop/releases/download/v1.16.5/session-desktop-win-x64-1.16.5.exe",
+      "silent_switches": "/S",
+      "needs_reboot": false,
+      "architecture": "x64",
+      "vendor": "Session",
+      "version": "1.16.5",
+      "size": "101MB"
     },
     {
       "name": "Zoom",
@@ -499,15 +593,59 @@
       "architecture": "x64",
       "vendor": "1Password"
     },
-    {
-      "name": "Malwarebytes",
-      "category": "Privacy & Security",
-      "download_url": "https://downloads.malwarebytes.com/file/mb4_offline",
-      "silent_switches": "/VERYSILENT /NORESTART",
-      "needs_reboot": false,
-      "architecture": "x64",
-      "vendor": "Malwarebytes"
-    },
+      {
+        "name": "Malwarebytes",
+        "category": "Privacy & Security",
+        "download_url": "https://downloads.malwarebytes.com/file/mb4_offline",
+        "silent_switches": "/VERYSILENT /NORESTART",
+        "needs_reboot": false,
+        "architecture": "x64",
+        "vendor": "Malwarebytes"
+      },
+      {
+        "name": "Bitdefender Total Security",
+        "category": "Privacy & Security",
+        "download_url": "https://download.bitdefender.com/windows/installer/en-us/bitdefender_ts.exe",
+        "silent_switches": "/s /v/qn",
+        "needs_reboot": false,
+        "architecture": "x64",
+        "vendor": "Bitdefender",
+        "version": "2025",
+        "size": "18MB"
+      },
+      {
+        "name": "Mullvad VPN",
+        "category": "Privacy & Security",
+        "download_url": "https://mullvad.net/media/app/MullvadVPN-latest.exe",
+        "silent_switches": "/S",
+        "needs_reboot": false,
+        "architecture": "x64",
+        "vendor": "Mullvad VPN AB",
+        "version": "2025.1",
+        "size": "2.5MB"
+      },
+      {
+        "name": "ProtonMail Desktop",
+        "category": "Communication",
+        "download_url": "https://proton.me/download/mail/windows/ProtonMail-desktop.exe",
+        "silent_switches": "/S",
+        "needs_reboot": false,
+        "architecture": "x64",
+        "vendor": "Proton AG",
+        "version": "1.0.6",
+        "size": "102MB"
+      },
+      {
+        "name": "Proton Drive",
+        "category": "Cloud Storage",
+        "download_url": "https://proton.me/download/drive/windows/Proton%20Drive%20Setup.exe",
+        "silent_switches": "/S",
+        "needs_reboot": false,
+        "architecture": "x64",
+        "vendor": "Proton AG",
+        "version": "1.11.1",
+        "size": "68MB"
+      },
     {
       "name": "CCleaner",
       "category": "System Utilities",
