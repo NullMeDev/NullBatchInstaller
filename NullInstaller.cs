@@ -91,10 +91,10 @@ namespace NullInstaller
             mainSplitContainer = new SplitContainer
             {
                 Dock = DockStyle.Fill,
-                SplitterDistance = 200,
                 BackColor = Color.FromArgb(39, 39, 42),
                 Panel1MinSize = 150,
-                Panel2MinSize = 400
+                Panel2MinSize = 400,
+                SplitterDistance = 200
             };
             
             // Left panel - Category tree (like WinRAR folders)
