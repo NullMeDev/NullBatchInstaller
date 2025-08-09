@@ -1,9 +1,11 @@
 # Binaries for programs and plugins
-*.exe
 *.exe~
 *.dll
 *.so
 *.dylib
+
+# Allow the main executable
+!NullInstaller.exe
 
 # Test binary, built with `go test -c`
 *.test
