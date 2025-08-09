@@ -1,0 +1,339 @@
+# CI/CD Pipeline for NullInstaller Testing
+# Supports GitHub Actions, Azure DevOps, and generic CI systems
+
+name: NullInstaller CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  BUILD_CONFIGURATION: 'Release'
+  TEST_RESULTS_PATH: './tests/TestResults'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1.1
+      
+    - name: Cache NuGet packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+          
+    - name: Restore dependencies
+      run: dotnet restore NullInstaller.csproj
+      
+    - name: Build application
+      run: |
+        msbuild NullInstaller.csproj /p:Configuration=${{ env.BUILD_CONFIGURATION }}
+        
+    - name: Generate mock installers
+      shell: pwsh
+      run: |
+        Write-Host "Generating mock installers for testing..."
+        & ./tests/mock_installers/generate_mocks.ps1 -OutputPath ./tests/mock_installers
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-artifacts
+        path: |
+          bin/${{ env.BUILD_CONFIGURATION }}/
+          tests/mock_installers/
+          
+  unit-tests:
+    needs: build
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: build-artifacts
+        
+    - name: Install test dependencies
+      run: |
+        dotnet add package MSTest.TestFramework
+        dotnet add package MSTest.TestAdapter
+        dotnet add package Microsoft.NET.Test.Sdk
+        
+    - name: Run unit tests
+      run: |
+        dotnet test tests/NullInstaller.Tests.cs `
+          --configuration ${{ env.BUILD_CONFIGURATION }} `
+          --logger "trx;LogFileName=unit-test-results.trx" `
+          --results-directory ${{ env.TEST_RESULTS_PATH }} `
+          --collect:"XPlat Code Coverage"
+          
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: unit-test-results
+        path: ${{ env.TEST_RESULTS_PATH }}
+        
+    - name: Publish test results
+      if: always()
+      uses: dorny/test-reporter@v1
+      with:
+        name: Unit Test Results
+        path: '${{ env.TEST_RESULTS_PATH }}/*.trx'
+        reporter: dotnet-trx
+        
+  integration-tests:
+    needs: build
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: build-artifacts
+        
+    - name: Run integration tests
+      shell: pwsh
+      run: |
+        Write-Host "Running integration tests..."
+        & ./tests/integration_test.ps1 -CI -Verbose
+        
+    - name: Upload integration test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: integration-test-results
+        path: tests/test_results.log
+        
+  mock-installer-tests:
+    needs: build
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        test-scenario: [success, failure, timeout, concurrent, retry]
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: build-artifacts
+        
+    - name: Test ${{ matrix.test-scenario }} scenario
+      shell: pwsh
+      run: |
+        Write-Host "Testing ${{ matrix.test-scenario }} scenario..."
+        
+        switch ("${{ matrix.test-scenario }}") {
+          "success" {
+            $installer = "./tests/mock_installers/MockChrome.exe"
+            $process = Start-Process -FilePath $installer -ArgumentList "/S" -PassThru -Wait
+            if ($process.ExitCode -ne 0) {
+              throw "Success test failed"
+            }
+          }
+          "failure" {
+            $installer = "./tests/mock_installers/MockFailingInstaller.exe"
+            $process = Start-Process -FilePath $installer -ArgumentList "/S" -PassThru -Wait
+            if ($process.ExitCode -eq 0) {
+              throw "Failure test failed - should have non-zero exit code"
+            }
+          }
+          "timeout" {
+            $installer = "./tests/mock_installers/MockTimeoutInstaller.exe"
+            $job = Start-Job -ScriptBlock {
+              param($path)
+              Start-Process -FilePath $path -ArgumentList "/S" -Wait
+            } -ArgumentList $installer
+            
+            $completed = Wait-Job -Job $job -Timeout 5
+            if ($completed) {
+              throw "Timeout test failed - should not complete"
+            }
+            Stop-Job -Job $job
+          }
+          "concurrent" {
+            $installers = @(
+              "./tests/mock_installers/MockChrome.exe",
+              "./tests/mock_installers/MockFirefox.exe",
+              "./tests/mock_installers/MockVSCode.exe"
+            )
+            
+            $jobs = $installers | ForEach-Object {
+              Start-Job -ScriptBlock {
+                param($path)
+                Start-Process -FilePath $path -ArgumentList "/S" -Wait
+              } -ArgumentList $_
+            }
+            
+            Wait-Job -Job $jobs -Timeout 30
+            $failed = $jobs | Where-Object { $_.State -ne "Completed" }
+            if ($failed) {
+              throw "Concurrent test failed"
+            }
+          }
+          "retry" {
+            $installer = "./tests/mock_installers/MockFailingInstaller.exe"
+            $attempts = 0
+            $maxRetries = 3
+            
+            while ($attempts -lt $maxRetries) {
+              $process = Start-Process -FilePath $installer -ArgumentList "/S" -PassThru -Wait
+              $attempts++
+              if ($process.ExitCode -eq 0) { break }
+              Start-Sleep -Seconds 1
+            }
+            
+            if ($attempts -ne $maxRetries) {
+              throw "Retry test failed - expected $maxRetries attempts"
+            }
+          }
+        }
+        
+        Write-Host "✓ ${{ matrix.test-scenario }} scenario test passed" -ForegroundColor Green
+        
+  performance-tests:
+    needs: build
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: build-artifacts
+        
+    - name: Run performance tests
+      shell: pwsh
+      run: |
+        Write-Host "Running performance tests..."
+        
+        # Test startup time
+        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+        $process = Start-Process -FilePath "./bin/Release/NullInstaller.exe" -PassThru
+        Start-Sleep -Seconds 1
+        $process.Kill()
+        $stopwatch.Stop()
+        
+        if ($stopwatch.ElapsedMilliseconds -gt 3000) {
+          throw "Startup time exceeds 3 seconds: $($stopwatch.ElapsedMilliseconds)ms"
+        }
+        
+        Write-Host "✓ Startup time: $($stopwatch.ElapsedMilliseconds)ms" -ForegroundColor Green
+        
+        # Test memory usage
+        $process = Start-Process -FilePath "./bin/Release/NullInstaller.exe" -PassThru
+        Start-Sleep -Seconds 2
+        $memoryMB = $process.WorkingSet64 / 1MB
+        $process.Kill()
+        
+        if ($memoryMB -gt 500) {
+          throw "Memory usage exceeds 500MB: ${memoryMB}MB"
+        }
+        
+        Write-Host "✓ Memory usage: ${memoryMB}MB" -ForegroundColor Green
+        
+  security-scan:
+    needs: build
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      
+    - name: Run security scan
+      shell: pwsh
+      run: |
+        Write-Host "Running security checks..."
+        
+        # Check for hardcoded credentials
+        $suspicious = Select-String -Path "*.cs","*.ps1" -Pattern "password|api[_-]?key|secret" -SimpleMatch
+        if ($suspicious) {
+          Write-Warning "Potential hardcoded credentials found:"
+          $suspicious | ForEach-Object { Write-Warning $_.Line }
+        }
+        
+        # Check for unsafe operations
+        $unsafe = Select-String -Path "*.cs" -Pattern "Process\.Start|Registry\.|FileIOPermission" -SimpleMatch
+        if ($unsafe) {
+          Write-Host "Security-sensitive operations found (review required):"
+          $unsafe | ForEach-Object { Write-Host $_.Line }
+        }
+        
+  publish:
+    needs: [unit-tests, integration-tests, mock-installer-tests, performance-tests, security-scan]
+    runs-on: windows-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: build-artifacts
+        
+    - name: Create release package
+      shell: pwsh
+      run: |
+        $version = Get-Content VERSION
+        $packageName = "NullInstaller_v${version}_Release.zip"
+        
+        Compress-Archive -Path @(
+          "bin/Release/NullInstaller.exe",
+          "README.md",
+          "LICENSE",
+          "tests/MANUAL_QA_CHECKLIST.md"
+        ) -DestinationPath $packageName
+        
+        Write-Host "✓ Release package created: $packageName" -ForegroundColor Green
+        
+    - name: Upload release package
+      uses: actions/upload-artifact@v3
+      with:
+        name: release-package
+        path: NullInstaller_*.zip
+        
+  notify:
+    needs: publish
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Send notification
+      run: |
+        echo "Pipeline completed with status: ${{ job.status }}"
+        # Add notification logic here (Slack, Teams, email, etc.)

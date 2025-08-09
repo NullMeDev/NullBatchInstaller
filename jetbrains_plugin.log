@@ -1,0 +1,6 @@
+[2025-08-09 11:13:47] [PLUGIN] [INFO] Checking for JetBrains IDEs...
+[2025-08-09 11:13:48] [PLUGIN] [SUCCESS] Found 3 IDE(s):
+[2025-08-09 11:13:48] [PLUGIN] [INFO]   - consentOptions v
+[2025-08-09 11:13:48] [PLUGIN] [INFO]   - PyCharm v2025.2
+[2025-08-09 11:13:48] [PLUGIN] [INFO]   - WebStorm v2025.2
+[2025-08-09 11:13:55] [PLUGIN] [SUCCESS] Integration hook exported to: C:\Users\Administrator\Desktop\NullInstaller\jetbrains_plugin_hook.ps1

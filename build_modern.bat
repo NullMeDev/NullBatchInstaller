@@ -30,23 +30,57 @@ echo Creating project file...
 echo ^<Project Sdk="Microsoft.NET.Sdk"^> > NullInstaller.csproj
 echo   ^<PropertyGroup^> >> NullInstaller.csproj
 echo     ^<OutputType^>WinExe^</OutputType^> >> NullInstaller.csproj
-echo     ^<TargetFramework^>net6.0-windows^</TargetFramework^> >> NullInstaller.csproj
+echo     ^<TargetFramework^>net9.0-windows^</TargetFramework^> >> NullInstaller.csproj
 echo     ^<UseWindowsForms^>true^</UseWindowsForms^> >> NullInstaller.csproj
 echo     ^<AssemblyTitle^>NullInstaller^</AssemblyTitle^> >> NullInstaller.csproj
 echo     ^<AssemblyDescription^>Modern Universal Installer Tool^</AssemblyDescription^> >> NullInstaller.csproj
 echo     ^<AssemblyVersion^>2.0.0.0^</AssemblyVersion^> >> NullInstaller.csproj
+echo     ^<EnableDefaultCompileItems^>false^</EnableDefaultCompileItems^> >> NullInstaller.csproj
+echo     ^<PublishSingleFile^>true^</PublishSingleFile^> >> NullInstaller.csproj
+echo     ^<SelfContained^>true^</SelfContained^> >> NullInstaller.csproj
+echo     ^<RuntimeIdentifier^>win-x64^</RuntimeIdentifier^> >> NullInstaller.csproj
+echo     ^<IncludeAllContentForSelfExtract^>true^</IncludeAllContentForSelfExtract^> >> NullInstaller.csproj
 echo   ^</PropertyGroup^> >> NullInstaller.csproj
+echo   ^<ItemGroup^> >> NullInstaller.csproj
+echo     ^<Compile Include="NullInstaller_Compact.cs" /^> >> NullInstaller.csproj
+echo   ^</ItemGroup^> >> NullInstaller.csproj
 echo ^</Project^> >> NullInstaller.csproj
 
-echo Compiling application...
-dotnet build -c Release -o dist
+echo Creating dist directory if not exists...
+if not exist dist mkdir dist
+
+echo Publishing single-file executable...
+dotnet publish -c Release -r win-x64 /p:PublishSingleFile=true /p:IncludeAllContentForSelfExtract=true -o dist NullInstaller.csproj
 if %errorlevel% neq 0 (
     echo ❌ Build failed
+    del NullInstaller.csproj
     exit /b 1
 )
 
+REM Check for code signing certificate (optional)
+echo Checking for code signing certificate...
+where signtool >nul 2>&1
+if %errorlevel% equ 0 (
+    echo Looking for available certificates...
+    signtool sign /a /t http://timestamp.digicert.com /fd SHA256 dist\NullInstallerEnhanced.exe >nul 2>&1
+    if %errorlevel% equ 0 (
+        echo ✓ Executable signed successfully
+    ) else (
+        echo ⚠ No valid certificate found, skipping signing
+    )
+) else (
+    echo ⚠ Signtool not found, skipping signing
+)
+
+REM Rename output to NullInstallerEnhanced.exe
+if exist dist\NullInstaller.exe (
+    move /y dist\NullInstaller.exe dist\NullInstallerEnhanced.exe >nul 2>&1
+)
+
+del NullInstaller.csproj
+
 echo ✓ Build successful!
-echo Output: %cd%\dist\NullInstaller.exe
+echo Output: %cd%\dist\NullInstallerEnhanced.exe
 goto :end
 
 :csc_build
