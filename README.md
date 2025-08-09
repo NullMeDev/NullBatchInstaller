@@ -1,28 +1,52 @@
 # NullInstaller v4.2.6
 
-**Ready-to-run Windows software installer - No compilation required!**
+**Professional Windows Software Installer with Modern WinRAR-Style Interface**
 
-A professional batch installer with silent installation support.
+A self-contained batch software installer - just download and run!
 
 ## Quick Start
 
-Simply download and run `NullInstaller.exe` - no build tools or compilation needed!
+Simply run `NullInstaller.exe` - no installation or dependencies required!
 
 ## Features
-- One-click batch installation
-- Silent/unattended installation
-- Dark mode UI
-- Stealth mode for privacy tools
-- Registry verification
-- Automatic retry on failures
 
-## Usage
-Run `NullInstaller.exe` as Administrator for best results.
+✅ **Modern WinRAR-Style GUI**
+- Left panel: Category tree view
+- Right panel: Detailed software list
+- Top toolbar with large action buttons
+- Bottom console for real-time logging
+- Dark theme interface
+
+✅ **Core Functionality**
+- Batch software installation and download
+- Select All / Deselect All
+- Stealth mode for privacy tools
+- Real-time progress tracking
+- Category-based organization
+- Silent/unattended installation support
 
 ## Requirements
-- Windows 10/11
-- .NET Framework 4.7.2+
-- Administrator privileges (recommended)
+
+- Windows 10/11 (64-bit)
+- Administrator privileges (for software installation)
+- No .NET installation required (self-contained)
+
+## Software Catalog
+
+Reads from `assets/software_catalog.json` with categories:
+- Browsers
+- Development Tools  
+- Security Software
+- Media Applications
+- Productivity Tools
+- System Utilities
+
+## Technical Details
+
+- **Size:** 66MB (self-contained with .NET 6 runtime)
+- **Language:** C# with Windows Forms
+- **Architecture:** x64
+- **Build:** Single-file, self-contained executable
 
 ## License
-MIT License
+Proprietary - NullMeDev
